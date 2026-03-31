@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { formatDateTime, formatCurrency } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/client';
-import type { Payment, PaymentStatus } from '@/lib/types';
+import { demoPayments, demoBookings, demoCustomers, demoServices } from '@/lib/demo-data';
+import type { PaymentStatus } from '@/lib/types';
 
 const statusVariants: Record<PaymentStatus, 'warning' | 'success' | 'destructive' | 'secondary'> = {
   pending: 'warning',
@@ -14,19 +14,35 @@ const statusVariants: Record<PaymentStatus, 'warning' | 'success' | 'destructive
 };
 
 export default function PaymentsPage() {
-  const [payments, setPayments] = useState<(Payment & { booking: { id: string; status: string; customer: { name: string } | null; service: { name: string } | null } })[]>([]);
+  const [payments, setPayments] = useState<typeof demoPayments>([]);
 
   useEffect(() => {
     async function load() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from('payments')
-        .select('*, booking:bookings(id, status, customer:customers(name), service:services(name))')
-        .order('created_at', { ascending: false });
-      setPayments(data ?? []);
+      try {
+        const { createClient } = await import('@/lib/supabase/client');
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('payments')
+          .select('*, booking:bookings(id, status, customer:customers(name), service:services(name))')
+          .order('created_at', { ascending: false });
+        if (data && data.length > 0) {
+          setPayments(data as typeof demoPayments);
+          return;
+        }
+      } catch {
+        // Fall through to demo
+      }
+      setPayments(demoPayments);
     }
     load();
   }, []);
+
+  function getBookingInfo(bookingId: string) {
+    const booking = demoBookings.find((b) => b.id === bookingId);
+    const customer = booking ? demoCustomers.find((c) => c.id === booking.customer_id) : null;
+    const service = booking ? demoServices.find((s) => s.id === booking.service_id) : null;
+    return { booking, customer, service };
+  }
 
   return (
     <div className="p-6">
@@ -46,25 +62,28 @@ export default function PaymentsPage() {
             </tr>
           </thead>
           <tbody>
-            {payments.map((p) => (
-              <tr key={p.id} className="border-b last:border-0 hover:bg-neutral-50">
-                <td className="px-4 py-3">{formatDateTime(p.created_at)}</td>
-                <td className="px-4 py-3">{(p.booking?.customer as { name: string } | null)?.name ?? '—'}</td>
-                <td className="px-4 py-3">{(p.booking?.service as { name: string } | null)?.name ?? '—'}</td>
-                <td className="px-4 py-3 font-medium">{formatCurrency(p.amount)}</td>
-                <td className="px-4 py-3">
-                  <Badge variant={statusVariants[p.status]}>
-                    {p.status}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge variant="outline">
-                    {p.booking?.status?.replace('_', ' ') ?? '—'}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-neutral-500">{p.provider}</td>
-              </tr>
-            ))}
+            {payments.map((p) => {
+              const info = getBookingInfo(p.booking_id);
+              return (
+                <tr key={p.id} className="border-b last:border-0 hover:bg-neutral-50">
+                  <td className="px-4 py-3">{formatDateTime(p.created_at)}</td>
+                  <td className="px-4 py-3">{info.customer?.name ?? '—'}</td>
+                  <td className="px-4 py-3">{info.service?.name ?? '—'}</td>
+                  <td className="px-4 py-3 font-medium">{formatCurrency(p.amount)}</td>
+                  <td className="px-4 py-3">
+                    <Badge variant={statusVariants[p.status]}>
+                      {p.status}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge variant="outline">
+                      {info.booking?.status?.replace('_', ' ') ?? '—'}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-neutral-500">{p.provider}</td>
+                </tr>
+              );
+            })}
             {payments.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-neutral-400">

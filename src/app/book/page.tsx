@@ -65,23 +65,25 @@ export default function BookPage() {
       start_time: selectedSlot.start_time,
     });
 
-    if (bookingResult.error || !bookingResult.booking) {
-      setError(bookingResult.error || 'Failed to create booking');
+    const br = bookingResult as { booking?: { id: string }; error?: string };
+    if (br.error || !br.booking) {
+      setError(br.error || 'Failed to create booking');
       setLoading(false);
       return;
     }
 
     // Create payment link
-    const paymentResult = await createPaymentForBooking(bookingResult.booking.id);
+    const paymentResult = await createPaymentForBooking(br.booking.id);
 
-    if (paymentResult.error || !paymentResult.paymentUrl) {
-      setError(paymentResult.error || 'Failed to create payment');
+    const pr = paymentResult as { paymentUrl?: string; error?: string };
+    if (pr.error || !pr.paymentUrl) {
+      setError(pr.error || 'Failed to create payment');
       setLoading(false);
       return;
     }
 
     // Redirect to payment
-    window.location.href = paymentResult.paymentUrl;
+    window.location.href = pr.paymentUrl!;
   }
 
   const today = new Date().toISOString().split('T')[0];

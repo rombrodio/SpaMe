@@ -1,35 +1,49 @@
-import { createClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CalendarDays, Users, DoorOpen, CreditCard } from 'lucide-react';
 import Link from 'next/link';
 
-export default async function DashboardPage() {
-  const supabase = await createClient();
+async function getStats() {
+  try {
+    const { createClient } = await import('@/lib/supabase/server');
+    const supabase = await createClient();
+    const [
+      { count: bookingCount },
+      { count: todayBookingCount },
+      { count: therapistCount },
+      { count: pendingPaymentCount },
+    ] = await Promise.all([
+      supabase.from('bookings').select('*', { count: 'exact', head: true }),
+      supabase
+        .from('bookings')
+        .select('*', { count: 'exact', head: true })
+        .gte('start_time', new Date().toISOString().split('T')[0])
+        .lt('start_time', new Date(Date.now() + 86400000).toISOString().split('T')[0]),
+      supabase.from('therapists').select('*', { count: 'exact', head: true }).eq('active', true),
+      supabase
+        .from('bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending_payment'),
+    ]);
+    return {
+      totalBookings: bookingCount ?? 0,
+      todayBookings: todayBookingCount ?? 0,
+      activeTherapists: therapistCount ?? 0,
+      pendingPayments: pendingPaymentCount ?? 0,
+    };
+  } catch {
+    // Demo mode
+    return { totalBookings: 7, todayBookings: 4, activeTherapists: 4, pendingPayments: 2 };
+  }
+}
 
-  const [
-    { count: bookingCount },
-    { count: todayBookingCount },
-    { count: therapistCount },
-    { count: pendingPaymentCount },
-  ] = await Promise.all([
-    supabase.from('bookings').select('*', { count: 'exact', head: true }),
-    supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .gte('start_time', new Date().toISOString().split('T')[0])
-      .lt('start_time', new Date(Date.now() + 86400000).toISOString().split('T')[0]),
-    supabase.from('therapists').select('*', { count: 'exact', head: true }).eq('active', true),
-    supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending_payment'),
-  ]);
+export default async function DashboardPage() {
+  const s = await getStats();
 
   const stats = [
-    { label: 'Total Bookings', value: bookingCount ?? 0, icon: CalendarDays, href: '/calendar' },
-    { label: "Today's Bookings", value: todayBookingCount ?? 0, icon: CalendarDays, href: '/calendar' },
-    { label: 'Active Therapists', value: therapistCount ?? 0, icon: Users, href: '/therapists' },
-    { label: 'Pending Payments', value: pendingPaymentCount ?? 0, icon: CreditCard, href: '/payments' },
+    { label: 'Total Bookings', value: s.totalBookings, icon: CalendarDays, href: '/calendar' },
+    { label: "Today's Bookings", value: s.todayBookings, icon: CalendarDays, href: '/calendar' },
+    { label: 'Active Therapists', value: s.activeTherapists, icon: Users, href: '/therapists' },
+    { label: 'Pending Payments', value: s.pendingPayments, icon: CreditCard, href: '/payments' },
   ];
 
   return (

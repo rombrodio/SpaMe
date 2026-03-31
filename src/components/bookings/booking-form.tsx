@@ -75,8 +75,9 @@ export function BookingForm({ open, onOpenChange, onCreated, initialDate, initia
       notes: notes || undefined,
     });
 
-    if (result.error) {
-      setError(result.error);
+    const r = result as { error?: string };
+    if (r.error) {
+      setError(r.error);
       setLoading(false);
       return;
     }

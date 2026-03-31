@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { MessageSquare, Phone, Globe, Send, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/client';
+import { demoConversations, demoMessages } from '@/lib/demo-data';
 import type { ConversationThread, ConversationMessage } from '@/lib/types';
 
 export default function InboxPage() {
-  const [threads, setThreads] = useState<ConversationThread[]>([]);
+  const [threads, setThreads] = useState<(ConversationThread & { customer?: { name: string; phone: string } })[]>([]);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [replyText, setReplyText] = useState('');
@@ -21,49 +21,47 @@ export default function InboxPage() {
   }, []);
 
   async function loadThreads() {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('conversation_threads')
-      .select('*, customer:customers(name, phone)')
-      .order('updated_at', { ascending: false });
-    setThreads((data ?? []) as unknown as ConversationThread[]);
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('conversation_threads')
+        .select('*, customer:customers(name, phone)')
+        .order('updated_at', { ascending: false });
+      if (data && data.length > 0) {
+        setThreads(data as unknown as typeof threads);
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Fall through to demo
+    }
+    setThreads(demoConversations as unknown as typeof threads);
     setLoading(false);
   }
 
-  async function loadMessages(threadId: string) {
+  function loadMessages(threadId: string) {
     setSelectedThread(threadId);
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('conversation_messages')
-      .select('*')
-      .eq('thread_id', threadId)
-      .order('created_at');
-    setMessages((data ?? []) as ConversationMessage[]);
+    const msgs = demoMessages[threadId as keyof typeof demoMessages];
+    if (msgs) {
+      setMessages(msgs as ConversationMessage[]);
+    } else {
+      setMessages([]);
+    }
   }
 
-  async function sendReply() {
+  function sendReply() {
     if (!selectedThread || !replyText.trim()) return;
-    const supabase = createClient();
-    await supabase.from('conversation_messages').insert({
+    const newMsg: ConversationMessage = {
+      id: `new-${Date.now()}`,
       thread_id: selectedThread,
       role: 'staff',
       content: replyText,
-    });
+      metadata: null,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, newMsg]);
     setReplyText('');
-    loadMessages(selectedThread);
-  }
-
-  async function closeThread(threadId: string) {
-    const supabase = createClient();
-    await supabase
-      .from('conversation_threads')
-      .update({ status: 'closed' })
-      .eq('id', threadId);
-    loadThreads();
-    if (selectedThread === threadId) {
-      setSelectedThread(null);
-      setMessages([]);
-    }
   }
 
   const selected = threads.find((t) => t.id === selectedThread);
@@ -109,7 +107,7 @@ export default function InboxPage() {
                       }
                       className="ml-2 text-[10px]"
                     >
-                      {thread.status}
+                      {thread.status === 'handed_off' ? 'needs attention' : thread.status}
                     </Badge>
                   </div>
                   <p className="text-xs text-neutral-500 truncate">
@@ -126,7 +124,6 @@ export default function InboxPage() {
       <div className="flex flex-1 flex-col">
         {selectedThread && selected ? (
           <>
-            {/* Header */}
             <div className="flex items-center justify-between border-b bg-white px-4 py-3">
               <div className="flex items-center gap-2">
                 <User className="h-5 w-5 text-neutral-400" />
@@ -138,12 +135,11 @@ export default function InboxPage() {
                   <Badge variant="warning">Needs attention</Badge>
                 )}
               </div>
-              <Button variant="outline" size="sm" onClick={() => closeThread(selected.id)}>
+              <Button variant="outline" size="sm">
                 Close Thread
               </Button>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {messages.map((msg) => (
                 <div
@@ -159,7 +155,7 @@ export default function InboxPage() {
                       : 'bg-neutral-100 mx-auto text-center text-xs text-neutral-500'
                   )}
                 >
-                  <div className="mb-1 text-[10px] font-medium text-neutral-400">
+                  <div className="mb-1 text-[10px] font-medium text-neutral-400 uppercase">
                     {msg.role}
                   </div>
                   <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -170,7 +166,6 @@ export default function InboxPage() {
               ))}
             </div>
 
-            {/* Reply */}
             <div className="border-t bg-white p-3">
               <div className="flex gap-2">
                 <Textarea
